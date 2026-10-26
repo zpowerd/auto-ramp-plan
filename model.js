@@ -12,7 +12,7 @@
   const DONE = 12;
   const DISCARD = -1;
   const ONE_POOL = "all"; // domain id when contributors and tasks aren't split by domain
-  const VERSION = 11;
+  const VERSION = 12;
 
   // "L−1", "L0", … (true minus sign, as in the model doc)
   const name = (k) => "L" + (k < 0 ? "−" + -k : k);
@@ -66,6 +66,9 @@
       layers,
       startDate: "",                     // day 1 of the plan as "YYYY-MM-DD"; blank = tomorrow, moving forward each day
       evals: {},                         // review layers that are evals: { [layer]: true }
+      // CBs at L0 and above whose spare hours fall back to L−1 are super attempters: the tasks they create there skip the
+      // L−1 row and go straight to `to` (a review layer, or L12).
+      superAttempts: { on: true, to: DONE },
       domains: { split: false, list: [] },
       hoursPerDay: "4",
       attemptHours: { "-1": "3", 0: "1", 1: "1", 4: "0.5", 8: "1", 10: "1" },
@@ -76,7 +79,7 @@
       // `start`: CBs at each layer on day 1 (counted by the highest layer they can work).
       // `periods`: from day 2, a chain of periods per layer; the last one runs until the end.
       //   L−1: how many join each day, a set number in each period.
-      //   Review layers: how many are converted up into the layer each day, a set number or (above L0) enough to keep a % of L0.
+      //   Review layers: how many are converted up into the layer each day, a set number or enough to keep a % of L0.
       // The defaults convert fewer CBs at each step up, so every review layer grows by about one a day.
       ramp: {
         start: Object.fromEntries(WORKING.map((k) => [k, k === -1 ? "50" : "0"])),
@@ -95,7 +98,8 @@
 
   // How a ramp period adds CBs to a layer:
   //   linear  a set number every day: CBs joining L−1 (below 0, CBs leave), or converted up into a review layer
-  //   share   (review layers above L0) as many converted up as it takes to keep a % of L0's CBs, at least 1
+  //   share   (review layers) as many converted up as it takes to keep a % of L0's CBs, at least 1. At L0 itself, 100%
+  //           holds it steady (it refills what moved up a layer) and more grows it.
   const JOIN = { id: "add", label: "Add a set number a day", kind: "linear" };
   const CONVERT_PRESETS = [
     { id: "convert", label: "Convert a set number", kind: "linear" },
@@ -104,8 +108,8 @@
   const CONVERT = CONVERT_PRESETS[0];
   const SHARE = CONVERT_PRESETS[1];
   const SHARE_BASE = 0; // the layer a share is a % of
-  // The preset a layer's period uses: L−1 only adds a set number; a share needs a review layer above L0.
-  const presetOf = (k, id) => (k === -1 ? JOIN : k > SHARE_BASE && id === SHARE.id ? SHARE : CONVERT);
+  // The preset a layer's period uses: L−1 only adds a set number; a share needs L0 or a review layer above it.
+  const presetOf = (k, id) => (k === -1 ? JOIN : k >= SHARE_BASE && id === SHARE.id ? SHARE : CONVERT);
   function newPeriod(preset, amount = "") { return { preset, amount, days: "" }; }
 
   // A share's CBs: the % of L0's CBs (from the day before) as whole CBs, rounding halves up, and at least 1.
@@ -173,7 +177,10 @@
   // Layers that never get any tasks, tasks that never leave, and pipelines where nothing reaches L12.
   function flowWarnings(values, { review, destinations }) {
     // Moves that keep a task in the pipeline. Back to L−1 clears it: a way out, not a move to follow.
-    const next = (k) => (k === DONE ? [] : destinations.filter((to) => to !== DISCARD && values.moves[k][to] > 0));
+    // New tasks can also go where super attempts go.
+    const superTo = values.superAttempts?.on && Number.isFinite(values.superAttempts.to) ? [values.superAttempts.to] : [];
+    const next = (k) => (k === DONE ? [] : [...destinations.filter((to) => to !== DISCARD && values.moves[k][to] > 0),
+      ...(k === -1 ? superTo : [])]);
     const discards = (k) => k !== DONE && values.moves[k][DISCARD] > 0;
     const reach = (start) => {
       const seen = new Set([start]);
@@ -304,6 +311,21 @@
         }
         return period;
       });
+    }
+
+    // Super attempts: hours CBs at L0 and above fall back to L−1 with make tasks that go straight to `to`.
+    // `from` is the lowest human review layer, whose spare hours are the ones that reach L−1; with none, there are no super attempts.
+    const lowest = layers.human[1];
+    values.superAttempts = { on: inputs.superAttempts?.on === true && lowest !== undefined, to: NaN, from: lowest };
+    if (values.superAttempts.on) {
+      const raw = inputs.superAttempts.to;
+      const to = raw === "" || raw === null || raw === undefined ? NaN : Number(raw);
+      if ([...review, DONE].includes(to)) values.superAttempts.to = to;
+      else {
+        errors.push({ field: "superTo", message: REVIEW_OPTIONS.includes(to)
+          ? `Super attempts go to ${name(to)}, which isn't in the pipeline. Pick another layer.`
+          : "Pick the layer super attempts go to." });
+      }
     }
 
     const isEval = (k) => layers.evals.includes(k);

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
   <div class="page">
@@ -39,6 +39,15 @@
           <p class="hint">Mark the layers that are evals rather than human review. Evals take no contributor time and happen instantly.</p>
         </div>
 
+        <div class="picker" role="group" aria-labelledby="super-title" id="super-picker">
+          <p class="picker-label" id="super-title">Super attempts</p>
+          <div class="super-row">
+            <label class="check"><input type="checkbox" id="super-on"><span id="super-label">L0+ attempters are super attempters</span></label>
+            <label class="super-to" id="super-to-row"><span>Their tasks go to</span><select class="select" id="super-to"></select></label>
+          </div>
+          <p class="hint" id="super-hint">When CBs at L0 and above run out of review work, their hours fall back to L&minus;1. Super attempters' tasks skip the L&minus;1 row and go straight to the layer picked here.</p>
+        </div>
+
         <div class="scroll pipeline-scroll">
           <div class="pipeline" id="pipeline"></div>
         </div>
@@ -47,6 +56,7 @@
           <li><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="up" d="M1 5H23"/><path class="head-up" d="M21 1L29 5L21 9z"/></svg>Moves up to a higher layer</li>
           <li><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="back" d="M1 5H23"/><path class="head-back" d="M21 1L29 5L21 9z"/></svg>Goes back to the same or a lower layer</li>
           <li><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="discard" d="M1 5H23"/><path class="head-discard" d="M21 1L29 5L21 9z"/></svg>Sent back to L&minus;1 and cleared</li>
+          <li id="legend-super"><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="super" d="M1 5H23"/><path class="head-up" d="M21 1L29 5L21 9z"/></svg><span id="legend-super-text">Super attempts</span></li>
         </ul>
 
         <div class="scroll">
@@ -128,7 +138,7 @@
 
         <div class="ramp-block">
           <h3 class="sub-title">CB ramp</h3>
-          <p class="hint">New CBs join the project at L&minus;1, a set number a day in each period (below 0, CBs leave). Each review layer then converts CBs up from the layer below it: a set number a day or, above L0, as many as it takes to keep a % of the CBs L0 had the day before, rounded to whole CBs and at least 1. A layer can only convert as many as the layer below has, and nobody moves up more than one layer a day. CBs are counted by the highest layer they can work, and evals get none.<span id="ramp-per-domain" hidden> Each domain gets this ramp.</span></p>
+          <p class="hint">New CBs join the project at L&minus;1, a set number a day in each period (below 0, CBs leave). Each review layer then converts CBs up from the layer below it: a set number a day, or as many as it takes to keep a % of the CBs L0 had the day before, rounded to whole CBs and at least 1. At L0 itself, 100% holds it steady, refilling what moves up, and more than 100% grows it. A layer can only convert as many as the layer below has, and nobody moves up more than one layer a day. CBs are counted by the highest layer they can work, and evals get none.<span id="ramp-per-domain" hidden> Each domain gets this ramp.</span></p>
           <div class="ramp-editor" id="ramp-editor"></div>
         </div>
 
@@ -144,13 +154,13 @@
     </main>
   </div>
 
-  <script src="model.js?v=14"></script>
-  <script src="simulate.js?v=14"></script>
-  <script src="pipeline.js?v=14"></script>
-  <script src="plan.js?v=14"></script>
-  <script src="xlsx.js?v=14"></script>
-  <script src="sheet_eval.js?v=14"></script>
-  <script src="export.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="model.js?v=15"></script>
+  <script src="simulate.js?v=15"></script>
+  <script src="pipeline.js?v=15"></script>
+  <script src="plan.js?v=15"></script>
+  <script src="xlsx.js?v=15"></script>
+  <script src="sheet_eval.js?v=15"></script>
+  <script src="export.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

@@ -89,6 +89,9 @@ function compare(name, x, days) {
         near(get("A", k, t), r.attempts[k], what(`attempts at ${M.name(k)}`));
       }
       for (const k of hr) near(get("B", k, t), r.waiting[k], what(`waiting at ${M.name(k)}`));
+      // Super attempts have their own row while they're on, and none while they're off.
+      if (plan.superTo !== null) near(get("Sup", "s", t), r.superAttempts, what("super attempts"));
+      else assert.strictEqual(row.Sup, undefined, `${name}: no super attempts row while they're off`);
       near(get("Lm", 12, t), r.completed, what("done"));
       near(get("Lm", -1, t), r.cleared, what("cleared"));
       near(get("S", "S", t), r.total, what("done so far"));
@@ -125,6 +128,14 @@ function compare(name, x, days) {
       const which = ds.length > 1 ? "all domains" : ds[0].name;
       near(at(rows.created.each), created(t), `Plan: ${which} created on day ${t}`);
       near(at(rows.created.total), soFar, `Plan: ${which} created by day ${t}`);
+      assert.strictEqual(Boolean(rows.supers), plan.superTo !== null, `${name}: Plan has super attempt rows while they're on`);
+      if (rows.supers) {
+        const supers = (day) => ds.reduce((s, d) => s + (d.days[day - 1]?.superAttempts ?? 0), 0);
+        let supersSoFar = 0;
+        for (let k = 1; k <= t; k++) supersSoFar += supers(k);
+        near(at(rows.supers.each), supers(t), `Plan: ${which} super attempts on day ${t}`);
+        near(at(rows.supers.total), supersSoFar, `Plan: ${which} super attempts by day ${t}`);
+      }
       near(at(rows.done.each), ds.reduce((s, d) => s + (d.days[t - 1]?.completed ?? 0), 0), `Plan: ${which} done on day ${t}`);
       near(at(rows.done.total), ds.reduce((s, d) => s + doneBy(d, t), 0), `Plan: ${which} done by day ${t}`);
     }
@@ -279,6 +290,31 @@ x.targets.all = "10";
 assert.strictEqual(plan.reachedDay, 1);
 assert.strictEqual(wb.layout.days, 1);
 assert.deepStrictEqual(mondayRows, [1]);
+
+// 11. Super attempts: a review team with nothing to review yet falls back to L−1 from day 1. Straight to L12 (the
+//     default), to a review layer, through an eval to L10 with two domains, and switched off.
+const idle = () => {
+  const y = M.exampleInputs();
+  y.ramp.start[-1] = "5"; y.ramp.start[0] = "10"; y.ramp.start[10] = "4";
+  y.ramp.periods[-1] = [period("add", "1")];
+  for (const k of [0, 1, 4, 8, 10]) y.ramp.periods[k] = [period("convert", "0")];
+  y.targets.all = "200";
+  return y;
+};
+({ plan } = compare("super attempts to L12", idle()));
+assert.ok(plan.domains[0].days[0].superAttempts > 18, "day 1 has super attempts");
+x = idle(); x.superAttempts.to = 4;
+compare("super attempts to L4", x);
+x = idle(); x.evals[8] = true; x.superAttempts.to = 8;
+x.domains = { split: true, list: [{ id: "da", name: "Audio" }, { id: "db", name: "Video" }] };
+x.targets = { da: "150", db: "90" };
+x.backlog = { da: { ...M.blankBacklog(), 0: "12" }, db: M.blankBacklog() };
+x.overrides = { da: M.blankOverrides(), db: M.blankOverrides() };
+x.overrides.db.attemptHours[-1] = "2";
+compare("super attempts through an eval, two domains", x);
+x = idle(); x.superAttempts.on = false;
+({ wb } = compare("super attempts off", x));
+assert.strictEqual(wb.layout.plan.table.tasks[0].supers, null);
 
 // The file itself: a zip whose parts are all there, deflated or stored, with the CRCs right.
 async function files() {

@@ -3,7 +3,8 @@
  * right, using only the review layers that are switched on. Arrows to the next
  * layer run straight between the boxes, arrows that skip layers arc over the
  * top, and arrows back to the same or a lower layer loop underneath. Tasks sent
- * back to L−1 are cleared, so those arrows are dashed and grey.
+ * back to L−1 are cleared, so those arrows are dashed and grey. Super attempts
+ * get a dotted arc over everything, from L−1 to where their tasks go.
  */
 (function () {
   "use strict";
@@ -16,6 +17,7 @@
   const LABEL_ROOM = 14;
 
   const skipLift = (span) => 26 + 18 * (span - 2); // how high an arc over the top climbs
+  const SUPER_LIFT = 16; // how much higher the super attempts' arc climbs than a yield arc between the same boxes
   const backDrop = (span) => 30 + 18 * (span - 1); // how low an arc underneath dips
 
   const pct = (share) => M.formatNumber(share * 100) + "%";
@@ -54,7 +56,7 @@
     }
     if (edge.kind === "skip") {
       // Longer arcs leave further left and land further right, so they nest outside shorter ones.
-      const lift = skipLift(edge.span);
+      const lift = skipLift(edge.span) + (edge.lift ?? 0);
       const inset = Math.min(10 + 7 * (edge.span - 2), BOX_W / 2);
       const x1 = boxLeft(edge.from) + BOX_W - inset;
       const x2 = boxLeft(edge.to) + inset;
@@ -77,25 +79,31 @@
   }
 
   // Plain-language version for screen readers; the table below is the full equivalent.
-  function describe(edges, layers) {
+  function describe(edges, layers, superEdge, superFrom) {
     const parts = layers.working.map((from) => {
       const outs = edges.filter((e) => e.from === from).map((e) =>
         e.style === "discard" ? `${pct(e.share)} back to ${M.name(e.to)}, cleared` : `${pct(e.share)} to ${M.name(e.to)}`);
       return `${M.name(from)} sends ${outs.length ? outs.join(", ") : "nothing yet"}.`;
     });
     const path = [...layers.working, M.DONE].map(M.name).join(", ");
-    return `Pipeline through ${path}. ${parts.join(" ")}`;
+    const supers = superEdge ? ` Super attempts by ${M.name(superFrom)}+ CBs go straight to ${M.name(superEdge.to)}.` : "";
+    return `Pipeline through ${path}. ${parts.join(" ")}${supers}`;
   }
 
-  function render(container, { moves, rows, layers }) {
+  // `superTo`: where super attempts go, or null when they're off. `superFrom` is the lowest human review layer.
+  function render(container, { moves, rows, layers, superTo = null, superFrom }) {
     const order = [...layers.working, M.DONE];
     const at = new Map(order.map((k, i) => [k, i]));
     const step = (WIDTH - BOX_W) / (order.length - 1);
     const boxLeft = (k) => at.get(k) * step;
 
     const edges = edgesOf(moves, layers, at);
-    const top = Math.max(LABEL_ROOM + 8,
-      ...edges.filter((e) => e.kind === "skip").map((e) => 0.75 * skipLift(e.span) + LABEL_ROOM));
+    // Over the top even to the very next box, so it never sits on the L−1 arrow.
+    const superEdge = superTo !== null && at.has(superTo)
+      ? { from: -1, to: superTo, kind: "skip", style: "super", span: Math.max(2, at.get(superTo) - at.get(-1)), lift: SUPER_LIFT }
+      : null;
+    const arcs = [...edges, ...(superEdge ? [superEdge] : [])].filter((e) => e.kind === "skip");
+    const top = Math.max(LABEL_ROOM + 8, ...arcs.map((e) => 0.75 * (skipLift(e.span) + (e.lift ?? 0)) + LABEL_ROOM));
     const below = Math.max(18,
       ...edges.filter((e) => e.kind === "back").map((e) => 0.75 * backDrop(e.span) + LABEL_ROOM),
       ...edges.filter((e) => e.kind === "self").map(() => 0.75 * LOOP_DROP + LABEL_ROOM));
@@ -118,6 +126,17 @@
       return `<text class="edge-label" data-from="${e.from}" data-to="${e.to}" x="${s.x.toFixed(1)}" y="${s.y.toFixed(1)}">${pct(e.share)}</text>`;
     }).join("");
 
+    // The super attempts' arc goes under the boxes like the others, but has no share: its label just says what it is.
+    let superLine = "";
+    let superLabel = "";
+    if (superEdge) {
+      const s = shape(superEdge, top, boxLeft);
+      const tip = `Super attempts: when ${M.name(superFrom)}+ CBs fall back to L−1, their tasks go straight to ${M.name(superTo)}`;
+      superLine = `<g class="edge edge-super" data-super="true"><path class="edge-line" d="${s.d}" marker-end="url(#head-up)"/>` +
+        `<path class="edge-hit" d="${s.d}"><title>${esc(tip)}</title></path></g>`;
+      superLabel = `<text class="edge-label super-label" x="${s.x.toFixed(1)}" y="${s.y.toFixed(1)}">super attempts</text>`;
+    }
+
     const boxes = order.map((k) => {
       const done = k === M.DONE;
       const isEval = layers.evals?.includes(k);
@@ -135,7 +154,7 @@
     }).join("");
 
     container.innerHTML =
-      `<svg class="pipeline-svg" viewBox="0 0 ${WIDTH} ${height}" role="img" aria-label="${esc(describe(edges, layers))}">` +
+      `<svg class="pipeline-svg" viewBox="0 0 ${WIDTH} ${height}" role="img" aria-label="${esc(describe(edges, layers, superEdge, superFrom))}">` +
       `<defs>` +
       `<filter id="lift" x="-25%" y="-25%" width="150%" height="175%">` +
       `<feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.07"/>` +
@@ -144,7 +163,7 @@
       `<marker id="head-back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head-back" d="M0 1L10 5L0 9z"/></marker>` +
       `<marker id="head-discard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="head-discard" d="M0 1L10 5L0 9z"/></marker>` +
       `</defs>` +
-      `<g class="edges">${lines}</g><g class="boxes">${boxes}</g><g class="labels">${labels}</g>` +
+      `<g class="edges">${superLine}${lines}</g><g class="boxes">${boxes}</g><g class="labels">${labels}${superLabel}</g>` +
       `</svg>`;
   }
 

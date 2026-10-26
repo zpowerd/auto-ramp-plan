@@ -154,6 +154,10 @@
     const destLabel = (k) => (k === CLEARED ? "L−1 cleared" : k === DONE ? "L12 done" : L(k) + evalTag(k));
     const srcLabel = (j) => (j === -1 ? "L−1 new tasks" : L(j) + evalTag(j));
     const dayWhere = split ? "Each domain's sheet" : "Day by day";
+    // Super attempts: L−1 attempts made with the hours CBs at the lowest human review layer and up fall back with.
+    const sup = values.superAttempts?.on ? values.superAttempts : null;
+    const supWho = sup ? `${L(sup.from)}+` : "";
+    const raised = (k) => String(k).replace(/\d/g, (n) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[n]); // 10 -> ¹⁰
 
     const wb = X.workbook({ title: "Ramp plan", creator: "Ramp plan app", created: exportedOn });
     const st = stylesFor(wb);
@@ -222,7 +226,8 @@
       for (let c = 3; c <= 10; c++) sh.width(c, 13);
       put(sh, 1, 1, "Inputs", st.title);
       put(sh, 1, 2, "Blue cells are inputs. Change any of them and every sheet updates; everything else is worked out from them.", st.lede);
-      put(sh, 1, 3, "The layers, evals, domains and ramp periods come from the app. To change those, change them there and export again.", st.lede);
+      put(sh, 1, 3, "The layers, evals, super attempts, domains and ramp periods come from the app. To change those, change them there " +
+        "and export again.", st.lede);
 
       let r = 5;
       put(sh, 1, r++, "Plan", st.section);
@@ -261,6 +266,12 @@
         r++;
       }
       sh.rule(`${addr(totalCol, firstY)}:${addr(totalCol, r - 1)}`, `ABS(${addr(totalCol, firstY)}-1)>0.0001`, st.cfBad);
+      if (sup) {
+        r++;
+        put(sh, 1, r++, "Super attempts", st.strong);
+        put(sh, 1, r++, `${supWho} attempters are super attempters: when CBs at ${L(sup.from)} and above run out of review work and fall ` +
+          `back to L−1, the tasks they create there skip the L−1 row and go straight to ${destLabel(sup.to)}.`, st.lede);
+      }
 
       if (evals.length === 0) {
         for (const j of human) I.use[j] = Object.fromEntries(nonEval.map((k) => [k, I.Y[j][k]]));
@@ -587,7 +598,13 @@
       block("A", "Attempts, Aᵏ(t)", "Aᵏ(t) = min(H̃ᵏ(t) ÷ Tᵏ, Bᵏ(t)); at L−1, H̃ ÷ T", human,
         (k) => (k === -1 ? "L−1 new tasks" : L(k)), "Tᵏ");
       block("Rd", "Hours passed down, Rᵏ(t)", "Rᵏ(t) = H̃ᵏ(t) − Aᵏ(t) × Tᵏ", hr);
-      block("Lm", "Tasks moved, Lᵏ(t)", "Lᵏ(t) = Σⱼ Aʲ(t) × Y(j→k), workable tomorrow", out,
+      if (sup) {
+        block("Sup", "Super attempts, A⁻¹ₛ(t)", `A⁻¹ₛ(t) = R${raised(sup.from)}(t) ÷ T⁻¹: the L−1 attempts made with the hours ${supWho} CBs ` +
+          `fell back with. Their tasks go straight to ${destLabel(sup.to)}.`, ["s"], () => "L−1 super attempts");
+      }
+      block("Lm", "Tasks moved, Lᵏ(t)", sup
+        ? `Lᵏ(t) = Σⱼ Aʲ(t) × Y(j→k), with the super attempts going to ${destLabel(sup.to)} instead of by the L−1 row; workable tomorrow`
+        : "Lᵏ(t) = Σⱼ Aʲ(t) × Y(j→k), workable tomorrow", out,
         (k) => (k === DONE ? "L12 done" : k === CLEARED ? "L−1 cleared" : L(k)));
       block("S", "Done so far, S(t)", "S(t) = S(t−1) + L¹²(t)", ["S"], () => "Tasks done");
       block("U", "Utilisation, Uᵏ(t)", "Uᵏ(t) = Aᵏ(t) × Tᵏ ÷ H̃ᵏ(t)", hr);
@@ -620,8 +637,12 @@
           put(sh, c, row.A[k], F(k === -1 ? `${cell("Hav", k)}/${T(k)}` : `MIN(${cell("Hav", k)}/${T(k)},${cell("B", k)})`), st.num);
           if (k !== -1) put(sh, c, row.Rd[k], F(`${cell("Hav", k)}-${cell("A", k)}*${T(k)}`), st.num);
         });
+        if (sup) put(sh, c, row.Sup.s, F(`${cell("Rd", sup.from)}/${T(-1)}`), st.num);
         for (const k of out) {
-          const terms = human.map((j) => `${cell("A", j)}*${ref(I.use[j][k], sh)}`);
+          // L−1's super attempts skip its row: straight to where they go, or through it when that's an eval.
+          const terms = human.map((j) => `${j === -1 && sup ? `(${cell("A", j)}-${cell("Sup", "s")})` : cell("A", j)}*${ref(I.use[j][k], sh)}`);
+          if (sup && evals.includes(sup.to)) terms.push(`${cell("Sup", "s")}*${ref(I.end[sup.to][k], sh)}`);
+          else if (sup && sup.to === k) terms.push(cell("Sup", "s"));
           // Day 1 also counts tasks that were waiting at an eval and went straight to L12 or back to L−1.
           if (t === 1 && (k === DONE || k === CLEARED)) {
             for (const e of evals) terms.push(`${ref(I.backlog[id][e], sh)}*${ref(I.end[e][k], sh)}`);
@@ -724,16 +745,21 @@
       const tasks = (title, list) => {
         group(title);
         const created = pair("Created", ["that day", "so far"], false);
+        const supers = sup ? pair("Super attempts", ["that day", "so far"], false) : null;
         const done = pair("Done", ["that day", "so far"], false);
         for (let t = 1; t <= days; t++) {
           const c = dayCol(t);
           const sum = (rowOf) => list.map((x) => `${quoteSheet(x.sheet.name)}!${addr(c, rowOf(x))}`).join("+");
           put(sh, c, created.each, F(sum((x) => x.row.A[-1])), st.numMuted);
           put(sh, c, created.total, F(t === 1 ? addr(c, created.each) : `${addr(c - 1, created.total)}+${addr(c, created.each)}`), st.num);
+          if (supers) {
+            put(sh, c, supers.each, F(sum((x) => x.row.Sup.s)), st.numMuted);
+            put(sh, c, supers.total, F(t === 1 ? addr(c, supers.each) : `${addr(c - 1, supers.total)}+${addr(c, supers.each)}`), st.num);
+          }
           put(sh, c, done.each, F(sum((x) => x.row.Lm[DONE])), st.numMuted);
           put(sh, c, done.total, F(sum((x) => x.row.S.S)), st.numStrong);
         }
-        table.tasks.push({ ids: list.map((x) => x.domain.id), created, done });
+        table.tasks.push({ ids: list.map((x) => x.domain.id), created, supers, done });
       };
       tasks(split ? "Tasks, all domains" : "Tasks", D);
       if (split) for (const x of D) tasks(`Tasks, ${x.domain.name}`, [x]);
@@ -901,9 +927,10 @@
       if (hr.some((k) => I.periods[k].some((p) => p.kind === "share"))) {
         rampRows.push([`A % of ${base}`,
           `target = max(1, round(% × C⁰(t−1)));\nplanned = max(0, target − (Cᵏ(t−1) − converted out of k))`,
-          `Instead of a set number, a review layer above ${base} can keep a % of the CBs ${base} had the day before, rounded to ` +
-          "whole CBs and never below 1. Each day it plans to convert as many as it takes to get there, counting what it has left " +
-          "once the layer above has converted some of its CBs up.", "CB ramp: target, planned and converted"]);
+          `Instead of a set number, a review layer can keep a % of the CBs ${base} had the day before, rounded to whole CBs and ` +
+          "never below 1. Each day it plans to convert as many as it takes to get there, counting what it has left once the layer " +
+          `above has converted some of its CBs up. At ${base} itself, 100% holds it steady and more grows it.`,
+          "CB ramp: target, planned and converted"]);
       }
       rampRows.push(["CBs each day", "Cᵏ(t) = Cᵏ(t−1) + converted into k − converted out of k",
         "L−1 starts from its count after joining.", "CB ramp: CBs at the end of the day"]);
@@ -922,8 +949,12 @@
           `${dayWhere}: hours passed down`],
         ["New tasks", "A⁻¹(t) = H̃⁻¹(t) ÷ T⁻¹",
           "L−1 never runs out, so it uses every hour that's left. Each of these attempts creates a task.", `${dayWhere}: attempts, L−1`],
-        ["Tasks moved", "Lᵏ(t) = Σⱼ Aʲ(t) × Y(j→k)", "Every attempt sends its task on by the yields. Moved tasks can be worked the next day.",
-          `${dayWhere}: tasks moved`],
+        ...(sup ? [["Super attempts", `A⁻¹ₛ(t) = R${raised(sup.from)}(t) ÷ T⁻¹`,
+          `${supWho} attempters are super attempters. The hours they fall back to L−1 with make super attempts, whose tasks go ` +
+          `straight to ${destLabel(sup.to)} instead of by the L−1 row.`, `${dayWhere}: super attempts`]] : []),
+        ["Tasks moved", sup ? `Lᵏ(t) = Σⱼ Aʲ(t) × Y(j→k), super attempts to ${L(sup.to)}` : "Lᵏ(t) = Σⱼ Aʲ(t) × Y(j→k)",
+          "Every attempt sends its task on by the yields" + (sup ? `, except super attempts, which go to ${destLabel(sup.to)}` : "") +
+          ". Moved tasks can be worked the next day.", `${dayWhere}: tasks moved`],
         ["Tasks waiting", "Bᵏ(t+1) = Bᵏ(t) − Aᵏ(t) + Lᵏ(t)",
           "Tomorrow's queue is today's, minus what was attempted, plus what arrived. Day 1 starts with the tasks waiting on Inputs.",
           `${dayWhere}: tasks waiting`],

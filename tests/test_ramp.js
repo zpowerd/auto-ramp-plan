@@ -109,9 +109,21 @@ console.log(c.errors.map((e) => e.field + " | " + e.message));
 assert.deepStrictEqual(c.errors.map((e) => e.field), ["rampAmount:0:0", "rampAmount:4:0", "rampAmount:8:0", "rampAmount:10:0"]);
 assert.strictEqual(c.errors[3].message, "Enter the % of L0 that L10 keeps in period 1.");
 
-// L0 itself only converts a set number (a % of itself means nothing).
-x = M.exampleInputs(); x.ramp.periods[0] = [period("share", "5")];
-assert.strictEqual(M.validate(x, today).values.ramp.periods[0][0].kind, "linear");
+// L0 can keep a % of itself too: 100% holds it steady, refilling from L−1 what L1 converts up (2 a day), and 150% grows
+// it by half each day in whole CBs. From nobody it still starts at 1, and a small % stalls on small numbers (110% of 1 is 1).
+x = M.exampleInputs(); noConversions(x);
+x.ramp.start[0] = "10";
+x.ramp.periods[0] = [period("share", "100")];
+x.ramp.periods[1] = [period("convert", "2")];
+r = ramp(x, 5);
+assert.deepStrictEqual(r.curves[0], [10, 10, 10, 10, 10]); assert.deepStrictEqual(r.curves[1], [0, 2, 4, 6, 8]);
+assert.deepStrictEqual(r.curves[-1], [50, 50, 50, 50, 50]); // 2 join a day and 2 move up to L0
+x = M.exampleInputs(); noConversions(x);
+x.ramp.start[0] = "2";
+x.ramp.periods[0] = [period("share", "150")];
+assert.deepStrictEqual(ramp(x, 7).curves[0], [2, 3, 5, 8, 12, 18, 27]);
+x.ramp.start[0] = "0"; x.ramp.periods[0] = [period("share", "110")];
+assert.deepStrictEqual(ramp(x, 4).curves[0], [0, 1, 1, 1]);
 
 // A % of L0 needs L0 to have CBs: switched off, or an eval, it's an error whatever the number.
 x = M.exampleInputs(); x.ramp.periods[4] = [period("share", "20")];

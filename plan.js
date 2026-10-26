@@ -334,19 +334,26 @@
     for (let i = 0; i < days; i++) totals.push(cell(one(human.reduce((s, k) => s + cbs(k, i + 1), 0)), `strong${monday(i)}`));
     row(el("span", "", "All"), totals, "total-row");
 
-    // New tasks come from attempts at L−1; tasks done reach L12.
+    // New tasks come from attempts at L−1 (super attempts among them, when they're on); tasks done reach L12.
     section("Tasks");
     const created = [];
+    const supers = [];
     const thatDay = [];
     const soFar = [];
     for (let i = 0; i < days; i++) {
       const ran = domains.some((d) => d.days[i]);
       created.push(cell(ran ? one(onDay(i).reduce((s, r) => s + r.attempts[-1], 0)) : "", monday(i).trim()));
+      supers.push(cell(ran ? one(onDay(i).reduce((s, r) => s + r.superAttempts, 0)) : "", monday(i).trim()));
       thatDay.push(cell(ran ? one(onDay(i).reduce((s, r) => s + r.completed, 0)) : "", monday(i).trim()));
       // By the end of each Monday, in bold.
       soFar.push(cell(ran ? one(domains.reduce((s, d) => s + doneBy(d, i + 1), 0)) : "", `${isMonday(i + 1) ? "strong" : ""}${monday(i)}`));
     }
     row(el("span", "", "Created"), created);
+    if (plan.superTo !== null) {
+      const label = el("span", "", "Super attempts");
+      label.title = `Created by ${M.name(human[1])}+ CBs falling back to L−1; they go straight to ${M.name(plan.superTo)}`;
+      row(label, supers);
+    }
     row(el("span", "", "Done that day"), thatDay);
     row(el("span", "", "Done so far"), soFar);
 

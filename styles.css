@@ -184,6 +184,14 @@ h2 {
   stroke-linejoin: round;
 }
 
+/* Super attempts: a checkbox, then where their tasks go. */
+.super-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; min-height: 40px; }
+.check { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); cursor: pointer; }
+.check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.super-to { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; }
+.super-to[hidden] { display: none; }
+
 /* ---------- domains and targets ---------- */
 
 .segmented {
@@ -476,6 +484,8 @@ h2 {
 .pipeline .edge-up .edge-line { stroke: var(--up-line); }
 .pipeline .edge-back .edge-line { stroke: var(--back-line); }
 .pipeline .edge-discard .edge-line { stroke: var(--discard-line); stroke-dasharray: 5 4; }
+.pipeline .edge-super .edge-line { stroke: var(--up-line); stroke-dasharray: 0.5 5; stroke-width: 2.5; }
+.pipeline .edge-label.super-label { font-weight: 600; fill: var(--up-line); }
 .pipeline .head-up { fill: var(--up-line); }
 .pipeline .head-back { fill: var(--back-line); }
 .pipeline .head-discard { fill: var(--discard-line); }
@@ -517,10 +527,12 @@ h2 {
   color: var(--ink-2);
 }
 .legend li { display: flex; align-items: center; gap: 8px; }
+.legend li[hidden] { display: none; }
 .legend-arrow { width: 30px; height: 10px; flex: none; }
 .legend-arrow .up { stroke: var(--up-line); stroke-width: 2; }
 .legend-arrow .back { stroke: var(--back-line); stroke-width: 2; }
 .legend-arrow .discard { stroke: var(--discard-line); stroke-width: 2; stroke-dasharray: 5 4; }
+.legend-arrow .super { stroke: var(--up-line); stroke-width: 2.5; stroke-dasharray: 0.5 5; stroke-linecap: round; }
 .legend-arrow .head-up { fill: var(--up-line); }
 .legend-arrow .head-back { fill: var(--back-line); }
 .legend-arrow .head-discard { fill: var(--discard-line); }
@@ -897,7 +909,8 @@ h2 {
   background: var(--surface);
 }
 .day-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
-.day-picker {
+.day-picker,
+.select {
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--box-ring);
@@ -907,7 +920,9 @@ h2 {
   font: inherit;
   font-size: 14px;
 }
-.day-picker:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.day-picker:focus-visible,
+.select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.select[aria-invalid="true"] { border-color: var(--critical); box-shadow: inset 0 0 0 1px var(--critical); }
 
 /* ---------- small screens ---------- */
 

@@ -28,10 +28,13 @@ assert.ok(p2.domains[0].reachedDay <= d.reachedDay);
 assert.deepStrictEqual(p2.human, [-1, 0, 1, 4, 8]);
 
 // Clearing 50% at L0 slows it down while new tasks are scarce (10 CBs at L−1, then 6 more a day). With the
-// default 50 the top review layers set the pace, so it makes no difference.
-const scarce = (y) => { y.ramp.start[-1] = "10"; y.ramp.periods[-1] = [M.newPeriod("add", "6")]; return y; };
+// default 50 the top review layers set the pace, so it makes no difference, as long as there are no super attempts:
+// with them, L0 runs out of work on day 10 and its CBs' super attempts go straight to L12, a day sooner.
+const scarce = (y) => { y.ramp.start[-1] = "10"; y.ramp.periods[-1] = [M.newPeriod("add", "6")]; y.superAttempts.on = false; return y; };
 const runOf = (y) => S.run(M.validate(y), M.validate(y).values.ramp).domains[0].reachedDay;
 x = M.exampleInputs(); x.moves[0] = { ...x.moves[0], 1: "50", "-1": "50" };
+assert.strictEqual(runOf(x), d.reachedDay - 1);
+x.superAttempts.on = false;
 assert.strictEqual(runOf(x), d.reachedDay);
 let p3 = runOf(scarce(x));
 console.log("L0 clears 50%, scarce new tasks: reached day", p3, "vs", runOf(scarce(M.exampleInputs())));

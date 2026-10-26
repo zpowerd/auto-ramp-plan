@@ -43,6 +43,8 @@ Contributors and tasks can be split into \textbf{domains} $d \in \mathcal{D}$, o
   \item $B^k_d(0)$: tasks already waiting in layer $k$ of domain $d$ when the plan starts, for $k \in \mathcal{R}$ (often 0)
 
   \item $G_d$: the task target of domain $d$, the number of tasks that need to reach layer $12$
+
+  \item $\sigma \in \{0, 1\}$: whether contributors at layer $h_1$ and above are \textbf{super attempters}, where $h_1 = \min\bigl(\mathcal{H} \setminus \{-1\}\bigr)$ is the lowest human review layer (layer $0$ when it is in use), and $D \in \mathcal{R} \cup \{12\}$: where their super attempts go. By default $\sigma = 1$ and $D = 12$.
 \end{itemize}
 $P_d$ and $T^k_d$ default to shared values $P$ and $T^k$; a domain can set its own.
 
@@ -66,11 +68,11 @@ $C^k(t)$, the number of contributors whose highest qualified layer is $k$ on day
 
   \item $J(t) = m_p$: contributors joining layer $-1$ on day $t$, a set number a day in the period $p$ that day falls in. A negative $m_p$ means contributors leave. $J(t) = 0$ on days no period covers.
 
-  \item Each period of a human review layer $k \in \mathcal{H} \setminus \{-1\}$ either converts a set number $m^k_p \ge 0$ a day, or, for $k > 0$ while $0 \in \mathcal{H}$, keeps a \textbf{share} $\rho^k_p \ge 0$ of the contributors layer $0$ had the day before, in whole contributors and never fewer than one:
+  \item Each period of a human review layer $k \in \mathcal{H} \setminus \{-1\}$ either converts a set number $m^k_p \ge 0$ a day, or, for $k \ge 0$ while $0 \in \mathcal{H}$, keeps a \textbf{share} $\rho^k_p \ge 0$ of the contributors layer $0$ had the day before, in whole contributors and never fewer than one:
   \[
     g^k(t) = \max\Bigl(1,\; \operatorname{round}\bigl(\rho^k_p \, C^0(t-1)\bigr)\Bigr),
   \]
-  where round takes halves up. Layer $0$ itself only converts a set number.
+  where round takes halves up. At layer $0$ itself, $\rho^0_p = 1$ holds it steady, refilling what moved up to the layer above, and $\rho^0_p > 1$ grows it.
 \end{itemize}
 
 \subsection*{Ramp Equations}
@@ -127,7 +129,9 @@ For each domain $d$ (dropped from the notation below), evaluated each day for th
 
   \item $A^{-1}(t) = \dfrac{\tilde{H}^{-1}(t)}{T^{-1}}$: tasks attempted in layer $-1$ on day $t$, which absorbs all remaining hours; each of these attempts creates a task
 
-  \item $L^k(t) = \displaystyle\sum_{j \in \mathcal{H}} A^j(t)\, \hat{Y}^{(j,k)}$: tasks moved to layer $k$ on day $t$, for $k \in \mathcal{N}$; $L^{-1}(t)$ are the tasks cleared
+  \item $A^{-1}_s(t) = \sigma\, \dfrac{R^{h_1}(t)}{T^{-1}}$: the \textbf{super attempts} among them, made with the hours contributors at layer $h_1$ and above fell back to layer $-1$ with
+
+  \item $L^k(t) = \bigl(A^{-1}(t) - A^{-1}_s(t)\bigr)\, \hat{Y}^{(-1,k)} + A^{-1}_s(t)\, \hat{Y}^{(D,k)} + \displaystyle\sum_{j \in \mathcal{H} \setminus \{-1\}} A^j(t)\, \hat{Y}^{(j,k)}$: tasks moved to layer $k$ on day $t$, for $k \in \mathcal{N}$; $L^{-1}(t)$ are the tasks cleared. Super attempts skip the layer $-1$ row and go straight to $D$: $\hat{Y}^{(D,k)} = \mathbf{1}[k = D]$, or $X^{(D,k)}$ when $D$ is an eval
 
   \item $B^k(t+1) = B^k(t) - A^k(t) + L^k(t)$: backlog update for $k \in \mathcal{R} \setminus \mathcal{E}$ \\
   (tasks moved on day $t$ become workable on day $t+1$)
@@ -145,7 +149,7 @@ For each domain $d$ (dropped from the notation below), evaluated each day for th
 
   \item $\sum_{k \in \mathcal{H}} C^k(t)$: contributors working on day $t$, reported for the day each domain finishes
 
-  \item $A^{-1}(t)$: tasks created on day $t$, and $L^{-1}(t)$: tasks cleared
+  \item $A^{-1}(t)$: tasks created on day $t$, of which $A^{-1}_s(t)$ are super attempts, and $L^{-1}(t)$: tasks cleared
 
   \item $U^k(t) = \dfrac{A^k(t)\, T^k}{\tilde{H}^k(t)}$: share of effective hours in layer $k$ spent on layer $k$ tasks on day $t$
 
@@ -173,7 +177,7 @@ With domains, the report has each domain and all domains together.
 
   \item The plan runs for at most 365 days; a domain that hasn't reached its target by then is reported as not reached.
 
-  \item Before a plan runs, the inputs are checked: every row of $Y$ adds up to $1$, $0 < P \le 24$, $T^k > 0$, $G_d > 0$, backlogs, starting counts, conversions and shares are not negative, and a share of layer $0$ needs layer $0$ to be a human layer. Pipelines where no task reaches layer $12$, tasks loop forever, or a layer never gets tasks are flagged.
+  \item Before a plan runs, the inputs are checked: every row of $Y$ adds up to $1$, $0 < P \le 24$, $T^k > 0$, $G_d > 0$, backlogs, starting counts, conversions and shares are not negative, a share of layer $0$ needs layer $0$ to be a human layer, and $D$ must be in use. Super attempts count as a way for new tasks to move when checking the pipeline. Pipelines where no task reaches layer $12$, tasks loop forever, or a layer never gets tasks are flagged.
 
   \item Switching a review layer off removes it from $\mathcal{R}$: tasks that were moving to it go where it would have sent them, so every row of $Y$ still adds up to $1$.
 

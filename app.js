@@ -47,6 +47,12 @@
     const pool = M.ONE_POOL;
     for (const k of M.REVIEW_OPTIONS) base.layers[k] = saved.layers?.[k] !== false;
     for (const k of M.REVIEW_OPTIONS) if (saved.evals?.[k] === true) base.evals[k] = true; // older saves: no evals
+    // Saves from before super attempts get the example's: on, straight to L12.
+    if (saved.version >= 12 && saved.superAttempts) {
+      base.superAttempts.on = saved.superAttempts.on === true;
+      const to = saved.superAttempts.to;
+      base.superAttempts.to = [...M.REVIEW_OPTIONS, M.DONE].includes(to) ? to : "";
+    }
     base.hoursPerDay = pick(saved.hoursPerDay, base.hoursPerDay);
     base.startDate = pick(saved.startDate, base.startDate); // older saves: blank, so the plan starts tomorrow
     loadRamp(base, saved.ramp, pick, saved.version);
@@ -195,6 +201,41 @@
     }
   }
 
+  // Super attempts: who makes them (CBs at the lowest human review layer and up) and where their tasks can go.
+  // Hidden while no review layer has people in it, as then nobody's hours fall back to L−1.
+  function updateSuper() {
+    const { human, review, evals } = active();
+    const lowest = human[1];
+    $("#super-picker").hidden = lowest === undefined;
+    if (lowest === undefined) return;
+    const who = M.name(lowest);
+    $("#super-label").textContent = `${who}+ attempters are super attempters`;
+    $("#super-hint").textContent = `When CBs at ${who} and above run out of review work, their hours fall back to L−1. ` +
+      "Super attempters' tasks skip the L−1 row and go straight to the layer picked here.";
+    const on = inputs.superAttempts.on === true;
+    $("#super-on").checked = on;
+    $("#super-to-row").hidden = !on;
+    const choices = [...review, M.DONE];
+    const to = inputs.superAttempts.to;
+    const note = (k) => (k === M.DONE ? " (done)" : evals.includes(k) ? " (eval)" : "");
+    $("#super-to").innerHTML = (choices.includes(to) ? "" : '<option value="" selected disabled>Pick a layer</option>') +
+      choices.map((k) => `<option value="${k}"${k === to ? " selected" : ""}>${M.name(k)}${note(k)}</option>`).join("");
+  }
+
+  $("#super-on").addEventListener("change", (event) => {
+    inputs.superAttempts.on = event.target.checked;
+    save();
+    updateSuper();
+    refresh();
+  });
+
+  $("#super-to").addEventListener("change", (event) => {
+    inputs.superAttempts.to = Number(event.target.value);
+    save();
+    updateSuper();
+    refresh();
+  });
+
   // "eval" under an eval layer's name, wherever layers are listed.
   const evalNote = (k) => (active().evals.includes(k) ? "eval" : "");
 
@@ -287,7 +328,7 @@
     const base = M.name(M.SHARE_BASE);
     const baseIsHuman = human.includes(M.SHARE_BASE);
     // L−1: how many CBs join each day. Review layers: how many are converted up from the layer below each day,
-    // or, above L0, as many as it takes to keep a % of L0.
+    // or as many as it takes to keep a % of L0.
     editor.innerHTML = human.map((k, h) => {
       const joining = k === -1;
       const below = M.name(human[h - 1]);
@@ -302,9 +343,9 @@
         const amount = (label, placeholder, unit) =>
           rampInput(`rampAmount:${k}:${i}`, `${label} in ${where}`, placeholder) + `<span class="ramp-word">${unit}</span>`;
         const preset = M.presetOf(k, p.preset);
-        // Above L0 a layer can keep a % of L0 instead, while L0 has CBs (in the pipeline and not an eval).
+        // L0 and the layers above it can keep a % of L0 instead, while L0 has CBs (in the pipeline and not an eval).
         // A period that keeps a % without one still shows the choice, so it can be switched back.
-        const choose = k > M.SHARE_BASE && (baseIsHuman || preset === M.SHARE);
+        const choose = k >= M.SHARE_BASE && (baseIsHuman || preset === M.SHARE);
         let body;
         if (joining) {
           body = '<span class="ramp-word">add</span>' + amount("CBs joining each day", "2", "a day");
@@ -439,6 +480,7 @@
     buildAssumptions();
     buildRamp();
     updatePicker();
+    updateSuper();
     fillInputs();
     refresh();
   }
@@ -506,7 +548,20 @@
         `<span class="total-note">${view[1]}</span></div>`;
     }
 
-    window.RampPipeline.render(pipeline, { moves: result.values.moves, rows: result.rows, layers: result.layers });
+    // Where super attempts go is checked like any input; a bad pick is marked until it's fixed.
+    const superSelect = $("#super-to");
+    if (problems.has("superTo")) {
+      superSelect.setAttribute("aria-invalid", "true");
+      superSelect.title = problems.get("superTo");
+    } else {
+      superSelect.removeAttribute("aria-invalid");
+      superSelect.removeAttribute("title");
+    }
+    const sup = result.values.superAttempts;
+    const superTo = sup.on && Number.isFinite(sup.to) ? sup.to : null;
+    window.RampPipeline.render(pipeline, { moves: result.values.moves, rows: result.rows, layers: result.layers, superTo, superFrom: sup.from });
+    $("#legend-super").hidden = superTo === null;
+    if (superTo !== null) $("#legend-super-text").textContent = `Super attempts by ${M.name(sup.from)}+ CBs falling back to L−1`;
     highlight();
     renderSummary(result);
     updateStart(result);
@@ -665,6 +720,10 @@
   // "row:4" goes to the first cell of the L4 row; "col:4" to the cell that would send tasks to L4.
   function focusField(field) {
     const [kind, key] = field.split(":");
+    if (field === "superTo") {
+      $("#super-to").focus();
+      return;
+    }
     let target;
     if (kind === "row") {
       target = $(`input[data-field^="moves:${key}:"]`);
@@ -825,7 +884,8 @@
   matrix.addEventListener("focusout", () => { focusedCell = null; highlight(); });
 
   pipeline.addEventListener("mouseover", (event) => {
-    const edge = event.target.closest(".edge");
+    // The super attempts' arc has no cell in the table to light up.
+    const edge = event.target.closest(".edge:not(.edge-super)");
     const box = edge ? null : event.target.closest(".box");
     hoveredEdge = edge ? { from: edge.dataset.from, to: edge.dataset.to } : null;
     hoveredBox = box ? Number(box.dataset.layer) : null;
@@ -836,6 +896,10 @@
   // Clicking an arrow or a box jumps to the numbers behind it.
   pipeline.addEventListener("click", (event) => {
     const edge = event.target.closest(".edge");
+    if (edge?.dataset.super) {
+      $("#super-to").focus();
+      return;
+    }
     if (edge) {
       focusField(`moves:${edge.dataset.from}:${edge.dataset.to}`);
       return;

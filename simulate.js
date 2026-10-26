@@ -103,6 +103,7 @@
     const Y = values.moves;
     const target = values.targets[domain.id];
     const start = values.backlogByDomain[domain.id];
+    const sup = values.superAttempts?.on ? values.superAttempts : null;
     const blank = () => Object.fromEntries(destinations.map((k) => [k, 0]));
 
     // Day 1 starts with the tasks already waiting; any sitting at an eval are passed on first.
@@ -122,10 +123,12 @@
       const attempts = {};              // A^k(t)
       const spare = {};                 // R^k(t): hours passed down to the layer below
       let passedDown = 0;
+      let superAttempts = 0;            // A^−1_s(t): L−1 attempts made with the hours L0+ CBs fell back with
       for (const k of [...human].reverse()) { // highest layer first
         hours[k] = contributors[k] * P + passedDown;
         if (k === -1) {
           attempts[k] = hours[k] / T[k];  // L−1 has unlimited supply, so it uses every hour left
+          if (sup) superAttempts = passedDown / T[k];
           spare[k] = 0;
         } else {
           attempts[k] = Math.min(hours[k] / T[k], waiting[k]);
@@ -135,8 +138,13 @@
       }
 
       // Where the day's attempts send their tasks (workable tomorrow); evals pass theirs on today.
+      // Super attempts skip the L−1 row and go straight to where super attempts go.
       const arrivals = blank();
-      for (const j of human) for (const k of destinations) arrivals[k] += attempts[j] * (Y[j][k] ?? 0);
+      for (const j of human) {
+        const moving = j === -1 ? attempts[j] - superAttempts : attempts[j];
+        for (const k of destinations) arrivals[k] += moving * (Y[j][k] ?? 0);
+      }
+      if (sup) arrivals[sup.to] += superAttempts;
       if (day === 1) for (const k of destinations) arrivals[k] += k === DONE || k === CLEARED ? early[k] : 0;
       const evalPassed = passThroughEvals(arrivals, evals, Y, destinations);
       for (const k of humanReview) backlog[k] = waiting[k] - attempts[k] + arrivals[k];
@@ -148,6 +156,7 @@
         contributors,
         hours,
         attempts,
+        superAttempts,
         evalPassed,
         waiting,
         completed,
@@ -180,7 +189,7 @@
       ramp,
       startDate: values.startDate,           // day 1, "YYYY-MM-DD"
       startIsTomorrow: values.startIsTomorrow,
-      curves,          // each layer's CBs by day from its ramp, before days typed over by hand
+      curves,          // each layer's CBs by day, from its ramp
       maxDays,
       domains,
       human: layers.human,
@@ -188,6 +197,7 @@
       lastDay: Math.max(1, ...domains.map((d) => d.days.length)),
       rampLastChange: lastChange,
       short,           // per review layer and day: how many fewer CBs were converted than planned
+      superTo: values.superAttempts?.on ? values.superAttempts.to : null, // where super attempts go, or null when they're off
     };
   }
 
