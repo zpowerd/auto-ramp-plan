@@ -1,0 +1,183 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\title{In System Ramp Plan}
+\author{Zachary Decker}
+\date{October 2026}
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+Tasks enter at layer $-1$, which has infinite supply, and move between review layers probabilistically. Layer $12$ is the terminal layer: tasks that reach it are complete. A task sent back to layer $-1$ is \textbf{cleared}: it leaves the system. Time $t$ is measured in days; day $1$ is the plan's start date, tomorrow unless another date is chosen.
+
+Each plan chooses its review layers $\mathcal{R} \subseteq \{0, 1, 4, 8, 10\}$; layers $-1$ and $12$ are always in. The layers are
+\[
+  \mathcal{K} = \{-1\} \cup \mathcal{R} \cup \{12\}
+\]
+with working layers $\mathcal{W} = \{-1\} \cup \mathcal{R}$, where tasks are attempted. Some review layers can be \textbf{evals}, $\mathcal{E} \subseteq \mathcal{R}$: an eval takes no contributor time and passes on every task that reaches it the same day. Contributors work the \textbf{human layers}
+\[
+  \mathcal{H} = \{-1\} \cup (\mathcal{R} \setminus \mathcal{E}).
+\]
+For a human layer $k$, let $k^-$ denote the next lower layer in $\mathcal{H}$ and $k^+$ the next higher layer in $\mathcal{H}$, skipping evals (e.g.\ with every layer in use and no evals, $\mathcal{H} = \{-1, 0, 1, 4, 8, 10\}$, $4^- = 1$ and $4^+ = 8$).
+
+Contributors qualified for layer $k$ can also work any lower layer. When layer $k$ does not have enough tasks to use all available hours, the unused hours fall back to layer $k^-$, then to the layer below that, and so on down to layer $-1$, which absorbs all remaining hours.
+
+Contributors and tasks can be split into \textbf{domains} $d \in \mathcal{D}$, or kept in one pool ($|\mathcal{D}| = 1$). Each domain runs on its own, with its own contributors, backlog, target and assumptions; the layers and yields are shared.
+
+\subsection*{Parameters}
+\begin{itemize}
+  \item $T^k_d$: average attempt time (hours) in layer $k$ for domain $d$, for $k \in \mathcal{H}$ (evals take no time)
+
+  \item $P_d$: average number of hours worked per day per activated contributor in domain $d$
+
+  \item $Y^{(j,k)}$: proportion of tasks attempted in layer $j$ that are moved to layer $k$, where for each $j \in \mathcal{W}$:
+  \[
+    \sum_{k \in \mathcal{K}} Y^{(j,k)} = 1
+  \]
+  $Y^{(j,-1)}$ is the share sent back to layer $-1$ and cleared.
+
+  \item $B^k_d(0)$: tasks already waiting in layer $k$ of domain $d$ when the plan starts, for $k \in \mathcal{R}$ (often 0)
+
+  \item $G_d$: the task target of domain $d$, the number of tasks that need to reach layer $12$
+\end{itemize}
+$P_d$ and $T^k_d$ default to shared values $P$ and $T^k$; a domain can set its own.
+
+\subsection*{Evals}
+A task that lands on an eval is passed on the same day by the eval's own yields, possibly to another eval. Let $\mathcal{N} = \mathcal{K} \setminus \mathcal{E}$ be the other layers, and split $Y$ into the shares between evals, $Y_{\mathcal{E}\mathcal{E}}$, and the shares from evals to the other layers, $Y_{\mathcal{E}\mathcal{N}}$. A task that lands on eval $e$ ends up in layer $k \in \mathcal{N}$ with probability $X^{(e,k)}$, where
+\[
+  X = \left(I - Y_{\mathcal{E}\mathcal{E}}\right)^{-1} Y_{\mathcal{E}\mathcal{N}},
+\]
+so the yields the model uses fold the evals in: for $j \in \mathcal{H}$ and $k \in \mathcal{N}$,
+\[
+  \hat{Y}^{(j,k)} = Y^{(j,k)} + \sum_{e \in \mathcal{E}} Y^{(j,e)}\, X^{(e,k)}.
+\]
+Without evals, $\hat{Y} = Y$.
+
+\subsection*{Inputs: the contributor ramp}
+$C^k(t)$, the number of contributors whose highest qualified layer is $k$ on day $t$ for $k \in \mathcal{H}$, comes from a ramp. New contributors join at layer $-1$, and each human review layer fills up by converting contributors from the human layer just below it. Every domain gets the same ramp.
+\begin{itemize}
+  \item $C^k(1) = s^k \ge 0$: contributors at each human layer on day $1$
+
+  \item From day $2$, each human layer follows a chain of periods. Period $p$ starts on day $a_p$ (with $a_1 = 2$) and lasts $n_p$ days, so $a_{p+1} = a_p + n_p$. The last period runs until the end of the plan.
+
+  \item $J(t) = m_p$: contributors joining layer $-1$ on day $t$, a set number a day in the period $p$ that day falls in. A negative $m_p$ means contributors leave. $J(t) = 0$ on days no period covers.
+
+  \item Each period of a human review layer $k \in \mathcal{H} \setminus \{-1\}$ either converts a set number $m^k_p \ge 0$ a day, or, for $k > 0$ while $0 \in \mathcal{H}$, keeps a \textbf{share} $\rho^k_p \ge 0$ of the contributors layer $0$ had the day before, in whole contributors and never fewer than one:
+  \[
+    g^k(t) = \max\Bigl(1,\; \operatorname{round}\bigl(\rho^k_p \, C^0(t-1)\bigr)\Bigr),
+  \]
+  where round takes halves up. Layer $0$ itself only converts a set number.
+\end{itemize}
+
+\subsection*{Ramp Equations}
+Each day $t \ge 2$, new contributors join first. Then each human review layer, highest first, converts contributors up from the layer below it, so nobody moves up more than one layer a day.
+\begin{itemize}
+  \item $\bar{C}^{-1}(t) = \max\bigl(0,\; C^{-1}(t-1) + J(t)\bigr)$, and $\bar{C}^k(t) = C^k(t-1)$ for the other human layers: the counts before any conversions
+
+  \item $q^k(t) \ge 0$: contributors planned to convert into layer $k$ on day $t$, by the kind of period that day falls in:
+  \[
+    q^k(t) =
+    \begin{cases}
+      m^k_p & \text{a set number a day} \\
+      \max\Bigl(0,\; g^k(t) - \bigl(\bar{C}^k(t) - V^{k^+}(t)\bigr)\Bigr) & \text{a share of layer $0$}
+    \end{cases}
+  \]
+  A share counts what layer $k$ has left once layer $k^+$ has converted some of its contributors up, which is already known because the layers go highest first ($V^{k^+}(t) = 0$ for the highest human layer). Nobody is converted back down, so a layer above its share keeps its contributors.
+
+  \item $V^k(t) = \min\bigl(q^k(t),\; \bar{C}^{k^-}(t)\bigr)$: contributors converted into layer $k$ from layer $k^-$, never more than layer $k^-$ has
+
+  \item $C^k(t) = \bar{C}^k(t) + V^k(t) - V^{k^+}(t)$: contributors at layer $k$ at the end of day $t$, with $V^{-1}(t) = 0$ and $V^{k^+}(t) = 0$ for the highest human layer
+\end{itemize}
+
+\subsection*{State Variables}
+For each domain $d$:
+\begin{itemize}
+  \item $B^k_d(t)$: backlog, the number of tasks waiting in layer $k$ at the start of day $t$, for $k \in \mathcal{R} \setminus \mathcal{E}$ \\
+  (layer $-1$ has infinite supply, so no backlog is tracked, and evals hold no tasks)
+
+  \item $S_d(t)$: cumulative tasks completed through day $t$, with $S_d(0) = 0$
+\end{itemize}
+Tasks waiting at an eval on day $1$ are passed on before the day starts:
+\[
+  B^k_d(1) = B^k_d(0) + \sum_{e \in \mathcal{E}} B^e_d(0)\, X^{(e,k)}, \qquad k \in \mathcal{R} \setminus \mathcal{E},
+\]
+and those that end up in layer $12$ or back in layer $-1$ count as moved there on day $1$.
+
+\subsection*{Equations}
+For each domain $d$ (dropped from the notation below), evaluated each day for the human layers from highest to lowest, with $R^{k^+}(t) = 0$ for the highest. A domain works until it reaches its target:
+\[
+  w(t) =
+  \begin{cases}
+    1 & \text{if } S(t-1) < G \\
+    0 & \text{otherwise}
+  \end{cases}
+\]
+\begin{itemize}
+  \item $H^k(t) = w(t)\, C^k(t) \cdot P$: hours from contributors whose highest layer is $k$ on day $t$
+
+  \item $\tilde{H}^k(t) = H^k(t) + R^{k^+}(t)$: effective hours available in layer $k$ on day $t$, including hours that fell back from layer $k^+$
+
+  \item $A^k(t) = \min\left(\dfrac{\tilde{H}^k(t)}{T^k},\; B^k(t)\right)$: tasks attempted in layer $k$ on day $t$, for $k \in \mathcal{H} \setminus \{-1\}$
+
+  \item $R^k(t) = \tilde{H}^k(t) - A^k(t)\, T^k$: unused hours in layer $k$ that fall back to layer $k^-$ on day $t$, for $k \in \mathcal{H} \setminus \{-1\}$
+
+  \item $A^{-1}(t) = \dfrac{\tilde{H}^{-1}(t)}{T^{-1}}$: tasks attempted in layer $-1$ on day $t$, which absorbs all remaining hours; each of these attempts creates a task
+
+  \item $L^k(t) = \displaystyle\sum_{j \in \mathcal{H}} A^j(t)\, \hat{Y}^{(j,k)}$: tasks moved to layer $k$ on day $t$, for $k \in \mathcal{N}$; $L^{-1}(t)$ are the tasks cleared
+
+  \item $B^k(t+1) = B^k(t) - A^k(t) + L^k(t)$: backlog update for $k \in \mathcal{R} \setminus \mathcal{E}$ \\
+  (tasks moved on day $t$ become workable on day $t+1$)
+
+  \item $S(t) = S(t-1) + L^{12}(t)$
+\end{itemize}
+
+\subsection*{Outputs and Diagnostics}
+\begin{itemize}
+  \item $L^{12}(t)$: tasks completed (moved to layer $12$) on day $t$
+
+  \item $S(t) = \displaystyle\sum_{\tau=1}^{t} L^{12}(\tau)$: cumulative tasks completed through day $t$
+
+  \item $t^*_d = \min\{t : S_d(t) \ge G_d\}$: the day domain $d$ reaches its target, after which it stops; the plan is done on $t^* = \max_d t^*_d$, the day every target is reached
+
+  \item $\sum_{k \in \mathcal{H}} C^k(t)$: contributors working on day $t$, reported for the day each domain finishes
+
+  \item $A^{-1}(t)$: tasks created on day $t$, and $L^{-1}(t)$: tasks cleared
+
+  \item $U^k(t) = \dfrac{A^k(t)\, T^k}{\tilde{H}^k(t)}$: share of effective hours in layer $k$ spent on layer $k$ tasks on day $t$
+
+  \item $R^k(t)$: hours layer $k$ passed down on day $t$; $R^k(t) > 0$ means layer $k$ is \textbf{starved}
+
+  \item Layer $k$ is a \textbf{bottleneck} on day $t$ if $R^k(t) = 0$ and $B^k(t+1) > B^k(t)$
+
+  \item A conversion into layer $k$ \textbf{comes up short} on day $t$ if $V^k(t) < q^k(t)$: the layer below didn't have enough contributors
+\end{itemize}
+
+\subsection*{Weekly Report}
+The plan reports every Monday up to the day it ends, then the \textbf{final delivery} on day $t^*$ if that isn't a Monday (if it is, that Monday is the final delivery). For each reported day $t$, with $t'$ the reported day before it ($t' = 0$ for the first):
+\begin{itemize}
+  \item $S(t)$: tasks done by the end of the day, which is $\min\bigl(1,\, S(t)/G\bigr)$ of the target
+
+  \item $\sum_{u = t'+1}^{t} A^{-1}(u)$: tasks created since the reported day before: the week up to and including a Monday, or the days since the last Monday for the final delivery
+\end{itemize}
+With domains, the report has each domain and all domains together.
+
+\subsection*{Notes}
+\begin{itemize}
+  \item Tasks are counted continuously, so they can be fractional. Contributors are whole numbers as long as the ramp's starting counts and set numbers are, since a share is always rounded to whole contributors.
+
+  \item Comparisons allow a tolerance of $10^{-9}$, e.g.\ a domain has reached its target once $S(t) \ge G - 10^{-9}$, and a share rounds $\rho^k_p\, C^0(t-1) + 10^{-9}$, so floating point can't drop a half.
+
+  \item The plan runs for at most 365 days; a domain that hasn't reached its target by then is reported as not reached.
+
+  \item Before a plan runs, the inputs are checked: every row of $Y$ adds up to $1$, $0 < P \le 24$, $T^k > 0$, $G_d > 0$, backlogs, starting counts, conversions and shares are not negative, and a share of layer $0$ needs layer $0$ to be a human layer. Pipelines where no task reaches layer $12$, tasks loop forever, or a layer never gets tasks are flagged.
+
+  \item Switching a review layer off removes it from $\mathcal{R}$: tasks that were moving to it go where it would have sent them, so every row of $Y$ still adds up to $1$.
+
+  \item The spreadsheet export works out the same equations as live formulas, one column per day up to $t^*$.
+\end{itemize}
+
+\end{document}

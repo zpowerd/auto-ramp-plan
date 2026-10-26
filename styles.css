@@ -1,0 +1,930 @@
+/* Ramp plan. Chrome stays monochrome; colour only appears where it means something:
+   the flow tints in the probability grid and the status icons. */
+
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --rule: #c3c2b7;
+  --step: #898781;          /* the stepped line between "moves up" and "goes back" */
+  --focus: #0b0b0b;
+  --up: #3987e5;            /* blue step 400: the largest "moves up" share */
+  --back: #d45e2f;          /* orange at the same lightness: the largest "goes back" share */
+  --up-line: #2a78d6;       /* pipeline arrows */
+  --back-line: #eb6834;
+  --discard: #898781;       /* back to L−1: the task leaves the pipeline, so it's neutral grey */
+  --discard-line: #898781;
+  --box-ring: #c3c2b7;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --hl: rgba(11, 11, 11, 0.06);
+
+  --sans: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --math: "STIX Two Math", "STIX Two Text", "Cambria Math", "Times New Roman", serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --rule: #383835;
+    --step: #898781;
+    --focus: #f0efec;
+    --up: #1c5cab;          /* blue step 550 */
+    --back: #9c390e;
+    --up-line: #3987e5;
+    --back-line: #d95926;
+    --discard: #4a4a46;
+    --discard-line: #898781;
+    --box-ring: #4a4a46;
+    --hl: rgba(255, 255, 255, 0.08);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 56px 32px 96px;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px 32px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--grid);
+}
+
+h1 {
+  margin: 0;
+  font-size: 48px;
+  line-height: 1;
+  font-weight: 800;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  margin: 14px 0 0;
+  max-width: 52ch;
+  color: var(--ink-2);
+}
+
+.masthead-tools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.save-note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.pill-button {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.pill-button:hover { background: var(--hl); }
+.pill-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- sections ---------- */
+
+.block { margin-top: 48px; }
+.block + .block { margin-top: 64px; }
+
+h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 700;
+  font-stretch: 112.5%;
+}
+
+.section-note {
+  margin: 8px 0 0;
+  max-width: 64ch;
+  color: var(--ink-2);
+}
+
+.hint {
+  margin: 10px 0 0;
+  max-width: 64ch;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+/* ---------- layer picker ---------- */
+/* Chips are shaped like the pipeline's boxes: solid when the layer is in, outlined when it's out. */
+
+.picker { margin-top: 24px; }
+.picker + .picker { margin-top: 20px; }
+.picker-label { margin: 0 0 10px; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px 0 12px;
+  border: 1px solid var(--box-ring);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+.chip .layer-n { font-size: 20px; }
+.chip:hover { border-color: var(--ink); color: var(--ink); }
+.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--page); }
+.chip[aria-pressed="true"] .layer-l { color: inherit; opacity: 0.7; }
+.chip-mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- domains and targets ---------- */
+
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 20px;
+  padding: 3px;
+  border: 1px solid var(--box-ring);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.segment { position: relative; display: block; }
+.segment input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.segment span {
+  display: block;
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.segment:hover span { color: var(--ink); }
+.segment input:checked + span { background: var(--ink); color: var(--page); }
+.segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.grid thead th.col-domain { text-align: left; padding-left: 0; }
+.domains .group { text-align: left; }
+.grid.domains tbody th.domain-cell {
+  width: 248px;
+  min-width: 200px;
+  padding: 0;
+  border: 1px solid var(--grid);
+  background: var(--surface);
+}
+.grid.domains tbody th.domain-cell.is-fixed { border: 0; background: transparent; }
+.domain-fixed { display: block; padding-right: 14px; font-weight: 600; }
+.domains .name {
+  display: block;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+}
+.domains .name::placeholder { color: var(--muted); font-weight: 400; }
+.domains .name:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+.domains .name[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--critical); }
+.domains .name[aria-invalid="true"]:focus { outline-color: var(--critical); }
+.domains td.cell { width: 88px; min-width: 72px; }
+.domains td.row-action { padding: 0 0 0 6px; }
+
+.remove-domain {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.remove-domain:hover { background: var(--hl); color: var(--ink); }
+.remove-domain:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.remove-domain svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.add-domain { margin-top: 12px; }
+
+/* Model symbols, set like the doc's maths so the inputs map back to it. */
+.sym {
+  margin-left: 3px;
+  font-family: var(--math);
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: normal;
+  font-size: 1.08em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.sym sup { font-size: 0.68em; line-height: 0; }
+
+/* ---------- number inputs ---------- */
+
+.num {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--grid);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.num::placeholder { color: var(--muted); opacity: 1; }
+.num:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+.num[aria-invalid="true"] { box-shadow: inset 0 0 0 2px var(--critical); }
+.num[aria-invalid="true"]:focus { outline-color: var(--critical); }
+
+/* ---------- tables ---------- */
+
+/* position: relative keeps absolutely placed screen-reader text inside the scroll box. */
+.scroll { position: relative; overflow-x: auto; margin-top: 24px; }
+
+.grid {
+  border-collapse: collapse;
+}
+
+.grid thead th {
+  padding: 0 10px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-stretch: 87.5%;
+  line-height: 1.3;
+  color: var(--ink-2);
+  text-align: right;
+  vertical-align: bottom;
+}
+.grid thead th.col-layer { text-align: left; padding-left: 0; }
+
+.grid tbody th[scope="row"] {
+  width: 104px;
+  min-width: 104px;
+  padding: 0 14px 0 0;
+  text-align: left;
+  vertical-align: middle;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.grid td.cell {
+  padding: 0;
+  border: 1px solid var(--grid);
+  background: var(--surface);
+}
+.grid td.cell .num { border: 0; background: transparent; }
+
+.cell-fixed {
+  padding: 0 12px;
+  border: 1px solid var(--grid);
+  font-size: 14px;
+  color: var(--ink-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Layer names: a small L, a big number. */
+.layer { display: inline-flex; align-items: baseline; }
+.layer-l {
+  margin-right: 1px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.layer-n {
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 700;
+  font-stretch: 125%;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.layer-note {
+  display: block;
+  margin-top: -2px;
+  font-size: 12px;
+  font-stretch: 87.5%;
+  color: var(--ink-2);
+}
+
+/* Assumptions table: the default row, then one row per domain whose blank cells show the default in grey. */
+.grid.assumptions tbody th.domain-cell { width: 248px; min-width: 180px; padding: 0 14px 0 0; }
+.assumptions td.cell { width: 80px; min-width: 64px; }
+.assumptions .col-hours { max-width: 128px; }
+.assumptions .group { text-align: left; }
+.assumptions tbody tr:first-child + tr th,
+.assumptions tbody tr:first-child + tr td { border-top: 2px solid var(--step); }
+.domain-note {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  font-stretch: 87.5%;
+  color: var(--ink-2);
+}
+
+/* ---------- probability grid ---------- */
+
+.matrix thead .group {
+  padding-bottom: 4px;
+  text-align: left;
+}
+.matrix thead .cols th { padding-bottom: 8px; }
+.matrix thead .cols .layer-n { font-size: 19px; color: var(--ink); }
+.matrix thead .col-total { padding-left: 16px; text-align: left; }
+
+.matrix td.cell { width: 72px; min-width: 64px; }
+.matrix td.up { --tint: var(--up); }
+.matrix td.back { --tint: var(--back); }
+.matrix td.discard { --tint: var(--discard); }
+.matrix td.cell .num {
+  background: color-mix(in oklab, var(--tint) var(--mix, 0%), var(--surface));
+  transition: background-color 120ms ease-out;
+}
+
+/* The stepped line: cells to its right move a task up, cells to its left send it back. */
+.matrix td.step-left { border-left: 2px solid var(--step); }
+.matrix td.step-below { border-bottom: 2px solid var(--step); }
+
+/* Row and column headers follow the cell under the pointer or in focus. */
+.matrix th.is-hl { background: var(--hl); }
+.matrix thead .cols th.is-hl,
+.matrix tbody th.is-hl .layer-l { color: var(--ink); }
+
+.matrix td.total { padding: 0 0 0 16px; white-space: nowrap; }
+.total-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 128px;
+}
+.total-n {
+  min-width: 48px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.total-note { font-size: 14px; color: var(--ink-2); }
+
+/* Sticky layer column when the grid scrolls sideways on small screens. */
+.matrix tbody th[scope="row"],
+.matrix thead .col-layer {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--page);
+}
+.matrix tbody th.is-hl { background: color-mix(in oklab, var(--ink) 6%, var(--page)); }
+
+/* The cell (and its arrow) that's being pointed at elsewhere. */
+.matrix td.cell.is-linked .num { box-shadow: inset 0 0 0 2px var(--ink); }
+
+/* ---------- pipeline ---------- */
+
+.pipeline-scroll { margin-top: 28px; padding: 4px 0; }
+
+.pipeline-svg {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: auto;
+  overflow: visible;
+}
+.pipeline text { text-anchor: middle; fill: var(--ink); }
+
+.pipeline .box { cursor: pointer; }
+.pipeline .box rect {
+  fill: var(--surface);
+  stroke: var(--box-ring);
+  stroke-width: 1;
+  filter: url(#lift);
+}
+.pipeline .box:hover rect,
+.pipeline .box.is-linked rect { stroke: var(--ink); stroke-width: 1.5; }
+.pipeline .box-l { font-size: 12px; font-weight: 600; fill: var(--ink-2); }
+.pipeline .box-n {
+  font-size: 24px;
+  font-weight: 700;
+  font-stretch: 125%;
+  letter-spacing: -0.01em;
+}
+.pipeline .box-note { font-size: 11px; font-stretch: 87.5%; fill: var(--ink-2); }
+
+/* L12 is where tasks end, so it's the one solid box. */
+/* An eval has no people in it: a dashed outline instead of a solid one. */
+.pipeline .box-eval rect { stroke-dasharray: 5 4; stroke-width: 1.5; }
+.pipeline .box-done { cursor: default; }
+.pipeline .box-done rect,
+.pipeline .box-done:hover rect { fill: var(--ink); stroke: var(--ink); }
+.pipeline .box-done text,
+.pipeline .box-done .box-l,
+.pipeline .box-done .box-note { fill: var(--page); }
+
+.pipeline .edge-line { fill: none; stroke-width: 2; stroke-linecap: round; }
+.pipeline .edge-up .edge-line { stroke: var(--up-line); }
+.pipeline .edge-back .edge-line { stroke: var(--back-line); }
+.pipeline .edge-discard .edge-line { stroke: var(--discard-line); stroke-dasharray: 5 4; }
+.pipeline .head-up { fill: var(--up-line); }
+.pipeline .head-back { fill: var(--back-line); }
+.pipeline .head-discard { fill: var(--discard-line); }
+.pipeline .edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.pipeline .edge.is-linked .edge-line { stroke-width: 3.5; }
+.pipeline.has-link .edge:not(.is-linked) .edge-line { opacity: 0.3; }
+
+.pipeline .edge-label {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  dominant-baseline: central;
+  fill: var(--ink-2);
+  paint-order: stroke;
+  stroke: var(--page);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.pipeline .edge-label.is-linked { fill: var(--ink); font-weight: 800; }
+.pipeline.has-link .edge-label:not(.is-linked) { opacity: 0.45; }
+
+/* ---------- legend ---------- */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.legend li { display: flex; align-items: center; gap: 8px; }
+.legend-arrow { width: 30px; height: 10px; flex: none; }
+.legend-arrow .up { stroke: var(--up-line); stroke-width: 2; }
+.legend-arrow .back { stroke: var(--back-line); stroke-width: 2; }
+.legend-arrow .discard { stroke: var(--discard-line); stroke-width: 2; stroke-dasharray: 5 4; }
+.legend-arrow .head-up { fill: var(--up-line); }
+.legend-arrow .head-back { fill: var(--back-line); }
+.legend-arrow .head-discard { fill: var(--discard-line); }
+
+/* ---------- status icons ---------- */
+
+.icon { width: 16px; height: 16px; flex: none; }
+.icon .shape { stroke: none; }
+.icon .glyph { fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.icon-good .shape { fill: var(--good); }
+.icon-good .glyph { stroke: #fff; }
+.icon-warning .shape { fill: var(--warning); }
+.icon-warning .glyph { stroke: #0b0b0b; }
+.icon-critical .shape { fill: var(--critical); }
+.icon-critical .glyph { stroke: #fff; }
+
+/* ---------- input check ---------- */
+
+.summary {
+  margin-top: 56px;
+  padding-top: 20px;
+  border-top: 1px solid var(--grid);
+}
+.summary h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.summary h3 + ul { margin-top: 8px; }
+.summary ul + h3 { margin-top: 20px; }
+.summary ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.summary-line,
+.summary button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.summary button {
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.summary button:hover .msg { text-decoration: underline; text-underline-offset: 3px; }
+.summary button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.summary-line { font-weight: 600; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- creating the plan ---------- */
+
+.create-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 28px;
+}
+.create-row .hint { margin: 0; }
+.primary-button {
+  height: 48px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--page);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.primary-button:hover { opacity: 0.88; }
+.primary-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.primary-button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ---------- the plan ---------- */
+
+.plan { margin-top: 64px; padding-top: 40px; border-top: 1px solid var(--grid); }
+
+/* The contributor ramp: on day 1 and added each day, for every layer people work. */
+/* When the plan starts: a date box, what it means, and a way back to "tomorrow". */
+.plan-start {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 18px;
+}
+.plan-start label { font-weight: 600; }
+.plan-start .hint { margin: 0; }
+.date-input {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--box-ring);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.date-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.date-input[aria-invalid="true"] { border-color: var(--critical); box-shadow: inset 0 0 0 1px var(--critical); }
+.text-button {
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.text-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Export, at the very end: the button, then where the file went. */
+.export-block { margin-top: 56px; padding-top: 8px; border-top: 1px solid var(--grid); }
+.export-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 20px; }
+.export-status { margin: 0; }
+.export-status:empty { display: none; }
+.export-status a { color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
+.export-status a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The CB ramp, at the bottom of the plan: one line per layer, "Start with [n] then [period] then [period] … Add period". */
+.ramp-block { margin-top: 56px; padding-top: 8px; border-top: 1px solid var(--grid); }
+.ramp-editor { display: grid; gap: 10px; margin-top: 18px; }
+.ramp-row { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; column-gap: 12px; }
+.ramp-layer .layer-n { font-size: 20px; }
+.ramp-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ramp-word { font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+.ramp-num { width: 60px; height: 36px; }
+.ramp-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 3px;
+  border: 1px solid var(--box-ring);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.ramp-period .ramp-num { width: 52px; height: 30px; border-radius: 6px; }
+.ramp-preset {
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ramp-preset:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ramp-remove {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.ramp-remove:hover { background: var(--hl); color: var(--ink); }
+.ramp-remove:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ramp-remove svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.ramp-add {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px dashed var(--rule);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ramp-add:hover { color: var(--ink); border-color: var(--ink); }
+.ramp-add:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+#plan-body.is-stale { opacity: 0.45; }
+
+.plan-headline { margin-top: 36px; }
+.hero-number {
+  margin: 0;
+  font-size: 64px;
+  line-height: 1;
+  font-weight: 800;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+}
+.hero-label { margin: 10px 0 0; font-size: 18px; font-weight: 600; }
+.hero-sub { margin: 4px 0 0; color: var(--ink-2); }
+.plan-blocked { margin: 28px 0 0; font-weight: 600; color: var(--ink-2); }
+
+.sub-title {
+  margin: 40px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  font-stretch: 112.5%;
+}
+
+/* Charts: tasks done so far against the target. Thin marks; the data is the loud part. */
+.chart-single, .chart-grid { margin-top: 28px; }
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 28px 24px;
+}
+.chart-panel { margin: 0; min-width: 0; }
+.chart-title { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; font-size: 14px; }
+.chart-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-when { color: var(--ink-2); white-space: nowrap; }
+.chart { position: relative; border-radius: 6px; }
+.chart:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.chart svg { display: block; overflow: visible; }
+.chart .grid-line { stroke: var(--grid); stroke-width: 1; }
+.chart .axis-line { stroke: var(--rule); stroke-width: 1; }
+.chart .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .target-line { stroke: var(--ink-2); stroke-width: 1; }
+.chart .end-label { fill: var(--ink-2); font-size: 12px; }
+.chart .end-label.strong { fill: var(--ink); font-weight: 700; }
+.chart .series { fill: none; stroke: var(--up-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .series-dot { fill: var(--up-line); stroke: var(--page); stroke-width: 2; }
+.chart .crosshair { stroke: var(--ink-2); stroke-width: 1; }
+.chart .monday-line { stroke: var(--rule); stroke-width: 1; }
+.chart .monday-dot { fill: var(--page); stroke: var(--up-line); stroke-width: 2; }
+.chart .monday-label {
+  fill: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--page);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.chart-note { margin-top: 8px; }
+.chart-tip {
+  position: absolute;
+  display: grid;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 1px solid var(--box-ring);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.chart-tip[hidden] { display: none; }
+.tip-label { color: var(--ink-2); }
+.tip-value { font-size: 14px; }
+
+/* Result tables */
+.results td.num-cell, .timeline td.num-cell {
+  padding: 0 10px;
+  height: 36px;
+  border: 1px solid var(--grid);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.grid.results tbody th.domain-cell { width: 248px; padding: 0 14px 0 0; }
+.results thead th { text-align: right; }
+
+/* The timeline: one column per day; the layer names stay put while it scrolls sideways. */
+.timeline thead th.date-col {
+  min-width: 62px;
+  padding: 0 10px 8px;
+  line-height: 1.25;
+  text-align: right;
+  vertical-align: bottom;
+}
+.date-weekday, .date-day, .date-n { display: block; white-space: nowrap; }
+.date-weekday { color: var(--muted); }
+.date-day { color: var(--ink); font-weight: 700; }
+.date-n { color: var(--muted); font-weight: 400; font-size: 11px; }
+.timeline .corner,
+.timeline th.row-label,
+.timeline .section-row th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--page);
+}
+.grid.timeline tbody th.row-label { width: 96px; min-width: 96px; padding: 0 12px 0 0; text-align: left; }
+.timeline th.row-label .layer-n { font-size: 18px; }
+.timeline th.row-label > span:not(.layer) { font-weight: 600; }
+.timeline .section-row th {
+  padding: 18px 12px 6px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-align: left;
+  white-space: nowrap;
+}
+.timeline .total-row td { font-weight: 700; }
+/* Mondays: a light wash down the column and a firmer line where the week starts. */
+.timeline th.is-monday .date-weekday { color: var(--ink); font-weight: 700; }
+.timeline td.is-monday,
+.cell-key.is-monday { background-color: color-mix(in oklab, var(--ink) 6%, var(--surface)); }
+.grid.timeline td.is-monday,
+.timeline th.is-monday { border-left: 2px solid var(--rule); }
+.mondays td.is-met::after { content: " \2713"; color: var(--good); font-weight: 700; }
+.mondays td.two-line { height: 48px; line-height: 1.2; }
+/* The final delivery: the day the target is reached. */
+.mondays tr.is-final th, .mondays tr.is-final td { font-weight: 700; }
+.mondays tr.is-final .domain-note { color: var(--ink); font-weight: 600; }
+.cell-main, .cell-sub { display: block; }
+.cell-main { font-weight: 600; }
+.cell-sub { font-size: 12px; color: var(--ink-2); font-weight: 400; }
+.mondays td.two-line.is-met::after { content: none; }
+.mondays td.two-line.is-met .cell-main::after { content: " \2713"; color: var(--good); font-weight: 700; }
+
+/* A conversion that came up short: a small corner wedge. */
+.timeline td.is-short,
+.cell-key.is-short { position: relative; }
+.timeline td.is-short::before,
+.cell-key.is-short::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-style: solid;
+  border-width: 0 9px 9px 0;
+  border-color: transparent var(--critical) transparent transparent;
+}
+
+.timeline td.is-bottleneck,
+.cell-key.is-bottleneck { background: color-mix(in oklab, var(--warning) 38%, var(--surface)); }
+.timeline td.is-bottleneck { font-weight: 700; }
+.timeline td.is-starved { position: relative; color: var(--ink-2); }
+.timeline td.is-starved::after,
+.cell-key.is-starved::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+}
+.timeline-legend { margin-top: 12px; }
+.cell-key {
+  position: relative;
+  width: 22px;
+  height: 16px;
+  border: 1px solid var(--grid);
+  border-radius: 3px;
+  background: var(--surface);
+}
+.day-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.day-picker {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--box-ring);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+.day-picker:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 640px) {
+  .hero-number { font-size: 44px; }
+  .ramp-row { grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
+  .ramp-period { flex-wrap: wrap; max-width: 100%; }
+  .ramp-preset { max-width: 100%; }
+  .grid.timeline tbody th.row-label { width: 64px; min-width: 64px; padding-right: 8px; }
+  .page { padding: 32px 18px 72px; }
+  h1 { font-size: 36px; }
+  .masthead { align-items: flex-start; }
+  .masthead-tools { flex-wrap: wrap; gap: 10px 16px; }
+  .grid tbody th[scope="row"] { width: 76px; min-width: 76px; padding-right: 10px; }
+  .layer-n { font-size: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

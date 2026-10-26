@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ramp plan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+  <link rel="stylesheet" href="styles.css?v=14">
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div>
+        <h1>Ramp plan</h1>
+        <p class="lede">Pick your review layers and the yields between them, choose whether to split by domain, and fill in the assumptions for the in-system ramp model.</p>
+      </div>
+      <div class="masthead-tools">
+        <p class="save-note" id="save-note">Saved in this browser as you type.</p>
+        <button type="button" class="pill-button" id="reset">Reset to example values</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="block" aria-labelledby="pipeline-title">
+        <h2 id="pipeline-title">Pipeline and yield</h2>
+        <p class="section-note">Pick the review layers your pipeline uses. Then, for the tasks attempted in each layer, enter the percentage that moves to each layer next. Tasks sent back to L&minus;1 are cleared. Each row has to add up to 100%.</p>
+
+        <div class="picker" role="group" aria-labelledby="picker-label">
+          <p class="picker-label" id="picker-label">Review layers</p>
+          <div class="chips" id="layer-chips"></div>
+          <p class="hint">L&minus;1 (new tasks) and L12 (done) are always in the pipeline. Turning a layer off sends its tasks where it would have sent them.</p>
+        </div>
+
+        <div class="picker" role="group" aria-labelledby="eval-label">
+          <p class="picker-label" id="eval-label">Evals</p>
+          <div class="chips" id="eval-chips"></div>
+          <p class="hint">Mark the layers that are evals rather than human review. Evals take no contributor time and happen instantly.</p>
+        </div>
+
+        <div class="scroll pipeline-scroll">
+          <div class="pipeline" id="pipeline"></div>
+        </div>
+
+        <ul class="legend">
+          <li><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="up" d="M1 5H23"/><path class="head-up" d="M21 1L29 5L21 9z"/></svg>Moves up to a higher layer</li>
+          <li><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="back" d="M1 5H23"/><path class="head-back" d="M21 1L29 5L21 9z"/></svg>Goes back to the same or a lower layer</li>
+          <li><svg class="legend-arrow" viewBox="0 0 30 10" aria-hidden="true"><path class="discard" d="M1 5H23"/><path class="head-discard" d="M21 1L29 5L21 9z"/></svg>Sent back to L&minus;1 and cleared</li>
+        </ul>
+
+        <div class="scroll">
+          <table class="grid matrix" id="matrix">
+            <thead>
+              <tr class="groups">
+                <th scope="col" rowspan="2" class="col-layer">Attempted in</th>
+                <th scope="colgroup" class="group">Moves to&nbsp;<span class="sym">Y<sup>(j,k)</sup></span></th>
+                <th scope="col" rowspan="2" class="col-total">Total</th>
+              </tr>
+              <tr class="cols"></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <p class="hint">In the table, cells right of the stepped line move tasks up and cells left of it send them back. The L&minus;1 column clears them. Paste a block of cells from a spreadsheet to fill several at once, as percentages (70) or proportions (0.7).</p>
+      </section>
+
+      <section class="block" aria-labelledby="domains-title">
+        <h2 id="domains-title">Domains and targets</h2>
+        <p class="section-note">Split by domain when contributors only work tasks in their own domain. Each domain then has its own contributors, tasks and target. The pipeline, yields and attempt times are the same for every domain.</p>
+
+        <div class="segmented" role="radiogroup" aria-label="Domains">
+          <label class="segment"><input type="radio" name="domain-mode" value="one"><span>One pool for everyone</span></label>
+          <label class="segment"><input type="radio" name="domain-mode" value="split"><span>Split by domain</span></label>
+        </div>
+
+        <div class="scroll">
+          <table class="grid domains" id="domains">
+            <thead>
+              <tr class="groups">
+                <th scope="col" rowspan="2" class="col-domain">Domain</th>
+                <th scope="col" rowspan="2" class="col-target">Task target</th>
+                <th scope="colgroup" class="group">Tasks waiting on day&nbsp;1&nbsp;<span class="sym">B<sup>k</sup>(0)</span></th>
+              </tr>
+              <tr class="cols"></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button type="button" class="pill-button add-domain" id="add-domain" hidden>Add domain</button>
+        <p class="hint" id="domains-hint">Task target is how many tasks need to reach L12. Tasks waiting are already sitting in a review layer when the plan starts; L&minus;1 has an unlimited supply of new tasks.</p>
+      </section>
+
+      <section class="block" aria-labelledby="assumptions-title">
+        <h2 id="assumptions-title">Assumptions</h2>
+        <p class="section-note">Hours per day is the average an active contributor works. Hours per attempt is how long one attempt takes in each layer.</p>
+
+        <div class="scroll">
+          <table class="grid assumptions" id="assumptions">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint" id="assumptions-hint" hidden>Every domain uses the default row until you type its own number. Clear a cell to go back to the default.</p>
+      </section>
+
+      <section class="summary" id="summary" aria-live="polite" aria-label="Input check"></section>
+
+      <div class="create-row" id="create-row">
+        <button type="button" class="primary-button" id="create-plan">Create ramp plan</button>
+        <p class="hint" id="create-hint"></p>
+      </div>
+
+      <section class="block plan" id="plan" aria-labelledby="plan-title" hidden>
+        <h2 id="plan-title">Ramp plan</h2>
+        <p class="section-note" id="plan-note">The plan runs your inputs day by day and updates as you change anything, including the CB ramp at the bottom.</p>
+
+        <div class="plan-start">
+          <label for="plan-start">Starts on</label>
+          <input id="plan-start" class="date-input" type="date" data-field="startDate">
+          <span class="hint" id="start-mode">Tomorrow, moving forward each day</span>
+          <button type="button" class="text-button" id="start-tomorrow" hidden>Start tomorrow instead</button>
+        </div>
+
+        <p class="plan-blocked" id="plan-blocked" hidden>Fix the inputs and the plan will update.</p>
+        <div id="plan-body"></div>
+
+        <div class="ramp-block">
+          <h3 class="sub-title">CB ramp</h3>
+          <p class="hint">New CBs join the project at L&minus;1, a set number a day in each period (below 0, CBs leave). Each review layer then converts CBs up from the layer below it: a set number a day or, above L0, as many as it takes to keep a % of the CBs L0 had the day before, rounded to whole CBs and at least 1. A layer can only convert as many as the layer below has, and nobody moves up more than one layer a day. CBs are counted by the highest layer they can work, and evals get none.<span id="ramp-per-domain" hidden> Each domain gets this ramp.</span></p>
+          <div class="ramp-editor" id="ramp-editor"></div>
+        </div>
+
+        <div class="export-block">
+          <h3 class="sub-title">Export to Google Drive</h3>
+          <p class="hint">Downloads the plan as a spreadsheet where every equation is a live formula: the inputs, the CB ramp and the model day by day until the target is reached, with a sheet that explains each step. Upload it to Google Drive and open it with Google Sheets.</p>
+          <div class="export-row">
+            <button type="button" class="primary-button" id="export-plan">Export to Google Drive</button>
+            <p class="hint export-status" id="export-status" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="model.js?v=14"></script>
+  <script src="simulate.js?v=14"></script>
+  <script src="pipeline.js?v=14"></script>
+  <script src="plan.js?v=14"></script>
+  <script src="xlsx.js?v=14"></script>
+  <script src="sheet_eval.js?v=14"></script>
+  <script src="export.js?v=14"></script>
+  <script src="app.js?v=14"></script>
+</body>
+</html>
